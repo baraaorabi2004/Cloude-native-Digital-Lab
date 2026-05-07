@@ -1,0 +1,79 @@
+# 1. Base Image: Minimal Ubuntu 22.04 (Sustainability focused)
+FROM ubuntu:22.04
+
+# Define environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    VNC_PORT=6901 \
+    USER=coder \
+    HOME=/home/coder \
+    KASM_VNC_VERSION=1.3.2
+
+# 2. Install Dependencies, KasmVNC, XFCE desktop, Python 3, pip, and Geany (Lightweight IDE)
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    # Install core tools and extremely lightweight XFCE desktop environment
+    apt-get install -y --no-install-recommends \
+        xfce4 \
+        xfce4-terminal \
+        wget \
+        curl \
+        ca-certificates \
+        sudo \
+        ssl-cert \
+        libgetopt-long-descriptive-perl \
+        libdata-dump-perl \
+        libssl-dev \
+        libnss3 \
+        dbus-x11 \
+        x11-xserver-utils \
+        # Python and Developer Tools
+        python3 \
+        python3-pip \
+        python3-venv \
+        git \
+        # Geany: A powerful but extremely lightweight IDE, perfect for saving RAM/CPU resources
+        geany \
+        geany-plugins && \
+    # Download and install KasmVNC for Ubuntu 22.04 (Jammy)
+    wget https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VNC_VERSION}/kasmvncserver_jammy_${KASM_VNC_VERSION}_amd64.deb -O /tmp/kasmvnc.deb && \
+    apt-get install -y /tmp/kasmvnc.deb && \
+    # Clean up APT caches to minimize image size and save storage resources (Sustainability)
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Apply Sky Blue and White Theme to KasmVNC Web UI (Branding)
+RUN echo 'body, .kasm-body { background: linear-gradient(135deg, #87CEEB 0%, #E0F7FA 100%) !important; color: #333333 !important; } \
+    .login-container, .modal-content, .window { background-color: rgba(255, 255, 255, 0.95) !important; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1) !important; } \
+    h1, h2, h3, .text-white { color: #007BFF !important; } \
+    .btn-primary, .kasm-btn { background-color: #00BFFF !important; border: none !important; color: white !important; } \
+    .btn-primary:hover, .kasm-btn:hover { background-color: #009ACD !important; }' >> /usr/share/kasmvnc/www/css/kasm.css
+
+# Create a non-root user for security
+RUN useradd -m -s /bin/bash -G sudo ${USER} && \
+    echo "${USER}:${USER}" | chpasswd && \
+    echo "%sudo ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Setup environment for the user
+USER ${USER}
+WORKDIR ${HOME}
+
+# Setup Python Virtual Environment and install common engineering libraries
+RUN python3 -m venv ${HOME}/venv && \
+    ${HOME}/venv/bin/pip install --no-cache-dir numpy pandas matplotlib && \
+    echo "source ${HOME}/venv/bin/activate" >> ${HOME}/.bashrc
+
+# Configure KasmVNC for the user
+RUN mkdir -p ${HOME}/.vnc && \
+    # Setup VNC password
+    echo "coder" | vncpasswd -f > ${HOME}/.vnc/passwd && \
+    chmod 600 ${HOME}/.vnc/passwd && \
+    # Create an XFCE startup script
+    printf "#!/bin/bash\nexport DISPLAY=:1\nstartxfce4 &\n" > ${HOME}/.vnc/xstartup && \
+    chmod +x ${HOME}/.vnc/xstartup
+
+# استبدال EXPOSE و CMD بهذا الكود المتوافق تماماً مع Cloud Run
+ENV PORT=6901
+EXPOSE 6901
+
+# استخدام سكريبت تشغيل مرن
+CMD ["/bin/bash", "-c", "/usr/bin/vncserver -select-column 1 -websocketPort $PORT -geometry 1280x720 -localhost no"]
